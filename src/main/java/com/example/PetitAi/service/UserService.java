@@ -2,6 +2,7 @@ package com.example.PetitAi.service;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.AuthenticationException;
 import org.springframework.web.server.ResponseStatusException;
 
 import com.example.PetitAi.entity.Users;
@@ -16,6 +17,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
 import java.util.UUID;
 import java.util.Date;
 import java.util.concurrent.TimeUnit;
@@ -46,12 +48,11 @@ public class UserService {
     @Value("${LINK}") // Reads from application.properties or environment
     private String link;
 
+    @Value("${FRONTEND_URL}")
+    private String FrontEnd_URL;
+
     public List<Users> getAllUsers() {
         return userRepository.findAll();
-    }
-
-    public List<Users> getUsersByGender(String gender) {
-        return userRepository.findByGender(gender);
     }
 
     public Optional<Users> getUserById(String id) {
@@ -63,27 +64,28 @@ public class UserService {
     }
 
     public ResponseEntity<String> registerUser(Users user) {
+        user.setEmail(user.getEmail().toLowerCase());
         Optional<Users> existingUser = userRepository.findByEmail(user.getEmail());
 
         if (existingUser.isPresent()) {
             return ResponseEntity.status(HttpStatus.CONFLICT).body("Email already registered!");
         }
-
+//        System.out.println("Hi inside registerUser"+user.getEmail()+" "+user.getHashedPassword()+existingUser);
         // Generate verification token
         String token = UUID.randomUUID().toString();
         VerificationToken verificationToken = new VerificationToken();
         verificationToken.setToken(token);
         verificationToken.setUserName(user.getName());
         verificationToken.setHashedPassword(bCryptPasswordEncoder.encode(user.getHashedPassword()));
-        verificationToken.setEmail(user.getEmail());
-
+        verificationToken.setEmail(user.getEmail().toLowerCase());
         // Set expiration time (10 minutes)
-        verificationToken.setExpiryDate(new Date(System.currentTimeMillis() + TimeUnit.MINUTES.toMillis(10)));
+        LocalDateTime expiryTime = LocalDateTime.now().plusMinutes(10);
+        verificationToken.setExpiryDate(expiryTime);
 
         verificationTokenRepository.save(verificationToken);
 
         // Send verification email
-        String verificationUrl = link+"/verify?token=" + token;
+        String verificationUrl = link+"/users/verify?token=" + token;
         String emailContent = "<!DOCTYPE html>" +
                 "<html>" +
                 "<head>" +
@@ -135,17 +137,16 @@ public class UserService {
         Optional<VerificationToken> optionalToken = verificationTokenRepository.findByToken(token);
 
         if (!optionalToken.isPresent()) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Invalid or expired token!");
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(generateHtmlResponse("Invalid or expired token!", false));
         }
-
-
 
         VerificationToken verificationToken = optionalToken.get();
 
-        if (verificationToken.getExpiryDate().before(new Date())) {
-            return ResponseEntity.status(HttpStatus.GONE).body("Token expired!");
+        if (verificationToken.getExpiryDate().isBefore(LocalDateTime.now())) {
+            return ResponseEntity.status(HttpStatus.GONE).body(generateHtmlResponse("Token expired!", false));
         }
-        System.out.println("Hi inside verifyUser"+verificationToken.toString());
+
+        System.out.println("Hi inside verifyUser" + verificationToken.toString());
 
         // Create the user after verification
         Users user = new Users();
@@ -158,7 +159,30 @@ public class UserService {
         // Remove the token after verification
         verificationTokenRepository.delete(verificationToken);
 
-        return ResponseEntity.ok("Email verified! You can now log in.");
+        return ResponseEntity.ok(generateHtmlResponse("Email verified successfully! You can now log in.", true));
+    }
+
+    private String generateHtmlResponse(String message, boolean success) {
+        String color = success ? "#28a745" : "#dc3545"; // Green for success, Red for failure
+        return "<!DOCTYPE html>" +
+                "<html>" +
+                "<head>" +
+                "    <meta charset='UTF-8'>" +
+                "    <title>Email Verification</title>" +
+                "    <style>" +
+                "        body { font-family: Arial, sans-serif; text-align: center; padding: 50px; background-color: #f4f4f4; }" +
+                "        .container { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 0 10px rgba(0, 0, 0, 0.1); width: 50%; margin: auto; }" +
+                "        h1 { color: " + color + "; }" +
+                "        p { font-size: 18px; color: #555; }" +
+                "    </style>" +
+                "</head>" +
+                "<body>" +
+                "    <div class='container'>" +
+                "        <h1>" + message + "</h1>" +
+                "        <p>Thank you for verifying your email.</p>" +
+                "    </div>" +
+                "</body>" +
+                "</html>";
     }
 
     public void deleteUser(String id) {
@@ -166,16 +190,115 @@ public class UserService {
     }
 
     public ResponseEntity<String> login(Users user) {
-        //Authentication is done in the SecurityConfig class
-        //this Login is just generate the jwt token
+        try {
+            user.setEmail(user.getEmail().toLowerCase());
+            Authentication authentication =
+                    authenticationManager.authenticate(new UsernamePasswordAuthenticationToken(user.getEmail(), user.getHashedPassword()));
 
-        //this will run the authenticate method of the AuthenticationManager with our Authentication Provider
-        Authentication authentication =
-                authenticationManager.authenticate(new UsernamePasswordAuthenticationToken(user.getEmail(), user.getHashedPassword()));
-
-        if(authentication.isAuthenticated()){
-            return ResponseEntity.ok(jwtService.generateToken(user.getEmail()));
+            if (authentication.isAuthenticated()) {
+                String jwtToken = jwtService.generateToken(user.getEmail());
+                return ResponseEntity.ok(jwtToken);  // HTTP 200 OK with the JWT token
+            } else {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid Credentials");  // HTTP 401 Unauthorized
+            }
+        } catch (AuthenticationException e) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid Credentials");  // HTTP 401 Unauthorized on exception
         }
-        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("User not authenticated");
     }
+
+    public ResponseEntity<String> forgotPassword(String email) {
+        System.out.println("Inside forgot password");
+        Optional<Users> user = userRepository.findByEmail(email.toLowerCase());
+
+        System.out.println("USER  FP " + user + email.toLowerCase());
+
+
+        if (!user.isPresent()) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Email not found!");
+        }
+
+        Users foundUser = user.get();
+
+        // Check if the user is a Google login user
+        if (foundUser.getGoogleId() != null) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Email not found!");
+        }
+
+        // Generate password reset token
+        String token = UUID.randomUUID().toString();
+        VerificationToken resetToken = new VerificationToken();
+        resetToken.setToken(token);
+        resetToken.setEmail(email.toLowerCase());
+        LocalDateTime expiryTime = LocalDateTime.now().plusMinutes(15);
+        resetToken.setExpiryDate(expiryTime);
+        verificationTokenRepository.save(resetToken);
+
+        // Send reset password email
+        String resetPasswordUrl = FrontEnd_URL + "/reset-password?token=" + token;
+        String emailContent = "<!DOCTYPE html>" +
+                "<html>" +
+                "<head>" +
+                "    <meta charset='UTF-8'>" +
+                "    <title>Reset Your Password</title>" +
+                "    <style>" +
+                "        body { font-family: Arial, sans-serif; margin: 0; padding: 0; background-color: #f4f4f4; }" +
+                "        .container { width: 100%; max-width: 600px; margin: 0 auto; background-color: #ffffff; padding: 20px; border-radius: 8px; box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1); }" +
+                "        h1 { color: #333333; font-size: 24px; text-align: center; }" +
+                "        p { font-size: 16px; color: #555555; line-height: 1.6; }" +
+                "        a { display: inline-block; padding: 10px 20px; margin: 20px 0; background-color: #007BFF; color: #ffffff; text-decoration: none; border-radius: 5px; text-align: center; font-size: 16px; }" +
+                "        a:hover { background-color: #0056b3; }" +
+                "        .footer { text-align: center; font-size: 14px; color: #888888; margin-top: 20px; }" +
+                "    </style>" +
+                "</head>" +
+                "<body>" +
+                "    <div class='container'>" +
+                "        <h1>Password Reset Request</h1>" +
+                "        <p>We received a request to reset your password. If you made this request, please click the button below to reset your password.</p>" +
+                "        <p><a href='" + resetPasswordUrl + "'>Reset Your Password</a></p>" +
+                "        <div class='footer'>" +
+                "            <p>&copy; 2025 PetitAI. All rights reserved.</p>" +
+                "        </div>" +
+                "    </div>" +
+                "</body>" +
+                "</html>";
+
+
+        emailService.sendEmail(email, "Reset Your Password", emailContent);
+
+        return ResponseEntity.ok("Password reset email sent. Please check your inbox.");
+    }
+
+    public ResponseEntity<String> resetPassword(String token, String newPassword) {
+        Optional<VerificationToken> optionalToken = verificationTokenRepository.findByToken(token);
+
+        if (!optionalToken.isPresent()) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Invalid or expired token!");
+        }
+
+        VerificationToken resetToken = optionalToken.get();
+
+        // Check if the token has expired
+        if (resetToken.getExpiryDate().isBefore(LocalDateTime.now())) {
+            return ResponseEntity.status(HttpStatus.GONE).body("Token expired!");
+        }
+
+        // Find the user associated with the token
+        Optional<Users> user = userRepository.findByEmail(resetToken.getEmail());
+        if (!user.isPresent()) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body("User not found!");
+        }
+
+        // Update the user's password
+        Users existingUser = user.get();
+        existingUser.setHashedPassword(bCryptPasswordEncoder.encode(newPassword));
+        userRepository.save(existingUser);
+
+        // Remove the reset token after use
+        verificationTokenRepository.delete(resetToken);
+
+        return ResponseEntity.ok("Password reset successful. You can now log in with your new password.");
+    }
+
+
+
 }

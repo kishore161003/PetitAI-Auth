@@ -1,9 +1,14 @@
 package com.example.PetitAi.repository;
 
 import com.example.PetitAi.entity.VerificationToken;
-import org.springframework.data.mongodb.repository.MongoRepository;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
 import java.util.Optional;
 
-public interface VerificationTokenRepository extends MongoRepository<VerificationToken, String> {
+@Repository
+public interface VerificationTokenRepository extends JpaRepository<VerificationToken, String> {
+
     Optional<VerificationToken> findByToken(String token);
+
+    Optional<VerificationToken> findByEmail(String email); // Fetch token by email
 }

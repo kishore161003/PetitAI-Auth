@@ -1,25 +1,46 @@
 package com.example.PetitAi.entity;
 
-import lombok.*;
-import org.springframework.data.annotation.Id;
-import org.springframework.data.mongodb.core.index.Indexed;
-import org.springframework.data.mongodb.core.mapping.Document;
-import java.util.Date;
 
+import jakarta.persistence.*;
+import lombok.*;
+import java.time.LocalDateTime;
+@Entity
+@Table(name = "\"VerificationToken\"")
 @Getter
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-@Document(collection = "verification_tokens")
+@Builder
 public class VerificationToken {
 
     @Id
+    @GeneratedValue(strategy = GenerationType.UUID)
+    @Column(name = "\"id\"")
     private String id;
+
+    @Column(name = "\"userName\"")
     private String userName;
+
+    @Column(name = "\"hashedPassword\"")
     private String hashedPassword;
+
+    @Column(name = "\"token\"", unique = true, nullable = false)
     private String token;
-    private String email; // Associate with user email
 
-    private Date expiryDate;
+    @Column(name = "\"email\"", unique = true, nullable = false)
+    private String email;
 
+    @Column(name = "\"expiryDate\"")
+    private LocalDateTime expiryDate;
+
+    @Column(name = "\"createdAt\"")
+    private LocalDateTime createdAt = LocalDateTime.now();
+
+    @Column(name = "\"updatedAt\"")
+    private LocalDateTime updatedAt = LocalDateTime.now();
+
+    @PreUpdate
+    protected void onUpdate() {
+        updatedAt = LocalDateTime.now();
+    }
 }

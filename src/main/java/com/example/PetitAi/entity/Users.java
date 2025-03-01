@@ -1,54 +1,49 @@
 package com.example.PetitAi.entity;
 
+import jakarta.persistence.*;
 import lombok.*;
-import org.springframework.data.annotation.CreatedDate;
-import org.springframework.data.annotation.LastModifiedDate;
-import org.springframework.data.annotation.Id;
-import org.springframework.data.mongodb.core.mapping.Document;
-import org.springframework.data.mongodb.core.mapping.DBRef;
+import java.time.LocalDateTime;
 
-import java.util.Date;
-import java.util.List;
-
+@Entity
+@Table(name = "\"User\"")
 @Getter
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-@Document(collection = "users") // MongoDB collection name
+@Builder
 public class Users {
 
     @Id
-    private String id;  // MongoDB _id (automatically generated)
+    @GeneratedValue(strategy = GenerationType.UUID)
+    @Column(name = "\"id\"")
+    private String id;
 
+    @Column(name = "\"name\"")
     private String name;
 
+    @Column(name = "\"email\"", unique = true, nullable = false)
     private String email;
 
-    private String hashedPassword; // Null for Google-auth users
+    @Column(name = "\"hashedPassword\"")
+    private String hashedPassword;
 
-    private String googleId; // Google Sign-In users
-
-    private Date dob;
-
-    private String gender; // Male, Female, Other
-
+    @Column(name = "\"profilePic\"")
     private String profilePic;
 
-    private String address;
+    @Column(name = "\"googleId\"", unique = true)
+    private String googleId;
 
-    private String phoneNo;
-
-    private String bio;
-
+    @Column(name = "\"isActive\"")
     private boolean isActive = true;
 
-    @DBRef
-    private List<Petition> petitionsCreated; // References to Petition IDs
+    @Column(name = "\"createdAt\"")
+    private LocalDateTime createdAt = LocalDateTime.now();
 
-    @CreatedDate
-    private Date createdAt; // Automatically set
+    @Column(name = "\"updatedAt\"")
+    private LocalDateTime updatedAt = LocalDateTime.now();
 
-    @LastModifiedDate
-    private Date updatedAt; // Automatically set
-
+    @PreUpdate
+    protected void onUpdate() {
+        updatedAt = LocalDateTime.now();
+    }
 }

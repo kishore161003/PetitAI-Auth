@@ -2,6 +2,7 @@ package com.example.PetitAi.service;
 
 import com.example.PetitAi.entity.Users;
 import com.example.PetitAi.repository.UserRepository;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.security.web.authentication.AuthenticationSuccessHandler;
@@ -16,7 +17,11 @@ import java.util.Optional;
 public class OAuth2SuccessHandler implements AuthenticationSuccessHandler {
 
     private final JWTService jwtService;
+    
     private final UserRepository userRepository;
+
+    @Value("${FRONTEND_URL}")
+    private String FrontEnd_URL;
 
     public OAuth2SuccessHandler(JWTService jwtService, UserRepository userRepository) {
         this.jwtService = jwtService;
@@ -32,13 +37,23 @@ public class OAuth2SuccessHandler implements AuthenticationSuccessHandler {
         String googleId = oAuth2User.getAttribute("sub"); // Google unique ID
         String profilePic = oAuth2User.getAttribute("picture");
 
-        // Check if user exists in MongoDB
-        Optional<Users> existingUser = userRepository.findByEmail(email);
+        // Check if email already exists in the system (for normal signup)
+        Optional<Users> existingUserByEmail = userRepository.findByEmail(email);
 
-        Users user;
-        if (existingUser.isEmpty()) {
+        if (existingUserByEmail.isPresent()) {
+            // If email exists, that means user has already signed up with email and may be logging in via OAuth
+            Users user = existingUserByEmail.get();
+            if (user.getGoogleId() != null) {
+                // The user has already linked with Google, log them in
+                String token = jwtService.generateToken(user.getEmail());
+                response.sendRedirect(FrontEnd_URL+"/sign-in?token=" + token + "&email=" + email);
+            } else {
+                // Email exists but is not linked to Google, show error or redirect to login
+                response.sendRedirect(FrontEnd_URL+"/sign-in?error=emailAlreadyExists");
+            }
+        } else {
             // Create a new user if not exists
-            user = new Users();
+            Users user = new Users();
             user.setEmail(email);
             user.setName(name);
             user.setGoogleId(googleId);
@@ -46,14 +61,14 @@ public class OAuth2SuccessHandler implements AuthenticationSuccessHandler {
             user.setActive(true);
 
             user = userRepository.save(user); // Save to MongoDB
-        } else {
-            user = existingUser.get();
+
+            // Generate JWT Token
+            String token = jwtService.generateToken(user.getEmail());
+
+            // Redirect to frontend with both email and token in the query params
+            response.sendRedirect(FrontEnd_URL+"/sign-in?token=" + token + "&email=" + email);
         }
-
-        // Generate JWT Token
-        String token = jwtService.generateToken(user.getEmail());
-
-        // Redirect user to frontend with token
-        response.sendRedirect("http://localhost:3000/login-success?token=" + token);
     }
+
+
 }
