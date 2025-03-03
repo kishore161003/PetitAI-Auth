@@ -45,8 +45,9 @@ public class OAuth2SuccessHandler implements AuthenticationSuccessHandler {
             Users user = existingUserByEmail.get();
             if (user.getGoogleId() != null) {
                 // The user has already linked with Google, log them in
+                System.out.println("Google user already exists");
                 String token = jwtService.generateToken(user.getEmail());
-                response.sendRedirect(FrontEnd_URL+"/sign-in?token=" + token + "&email=" + email);
+                response.sendRedirect(FrontEnd_URL+"/sign-in?token=" + token + "&userId=" + user.getId());
             } else {
                 // Email exists but is not linked to Google, show error or redirect to login
                 response.sendRedirect(FrontEnd_URL+"/sign-in?error=emailAlreadyExists");
@@ -61,12 +62,12 @@ public class OAuth2SuccessHandler implements AuthenticationSuccessHandler {
             user.setActive(true);
 
             user = userRepository.save(user); // Save to MongoDB
-
+            System.out.println("New Google user created"+user.toString());
             // Generate JWT Token
             String token = jwtService.generateToken(user.getEmail());
 
             // Redirect to frontend with both email and token in the query params
-            response.sendRedirect(FrontEnd_URL+"/sign-in?token=" + token + "&email=" + email);
+            response.sendRedirect(FrontEnd_URL+"/sign-in?token=" + token + "&userId=" + user.getId());
         }
     }
 

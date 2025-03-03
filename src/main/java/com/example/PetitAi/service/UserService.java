@@ -18,11 +18,8 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
-import java.util.UUID;
-import java.util.Date;
+import java.util.*;
 import java.util.concurrent.TimeUnit;
-import java.util.List;
-import java.util.Optional;
 
 @Service
 public class UserService {
@@ -189,7 +186,7 @@ public class UserService {
         userRepository.deleteById(id);
     }
 
-    public ResponseEntity<String> login(Users user) {
+    public ResponseEntity<Map<String, String>> login(Users user) {
         try {
             user.setEmail(user.getEmail().toLowerCase());
             Authentication authentication =
@@ -197,14 +194,24 @@ public class UserService {
 
             if (authentication.isAuthenticated()) {
                 String jwtToken = jwtService.generateToken(user.getEmail());
-                return ResponseEntity.ok(jwtToken);  // HTTP 200 OK with the JWT token
+                Users currentUser = userRepository.findByEmail(user.getEmail()).get();
+                Map<String, String> response = new HashMap<>();
+                response.put("token", jwtToken);
+                response.put("userId", currentUser.getId());
+                System.out.println("USER IN LOGIN"+user.toString() + currentUser.getId() +user.getEmail());
+                return ResponseEntity.ok(response); // HTTP 200 OK
             } else {
-                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid Credentials");  // HTTP 401 Unauthorized
+                Map<String, String> errorResponse = new HashMap<>();
+                errorResponse.put("error", "Invalid Credentials");
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(errorResponse); // HTTP 401 Unauthorized
             }
         } catch (AuthenticationException e) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid Credentials");  // HTTP 401 Unauthorized on exception
+            Map<String, String> errorResponse = new HashMap<>();
+            errorResponse.put("error", "Invalid Credentials");
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(errorResponse); // HTTP 401 Unauthorized on exception
         }
     }
+
 
     public ResponseEntity<String> forgotPassword(String email) {
         System.out.println("Inside forgot password");
